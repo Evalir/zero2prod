@@ -3,6 +3,7 @@ use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
 use uuid::Uuid;
 use zero2prod::configuration::{get_configuration, DatabaseSettings};
+use zero2prod::email_client::EmailClient;
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
 
 use reqwest::Client;
@@ -35,8 +36,17 @@ async fn spawn_app() -> TestApp {
     config.database.database_name = Uuid::new_v4().to_string();
 
     let connection = configure_database(&config.database).await;
-    let server =
-        zero2prod::startup::run(listener, connection.clone()).expect("Failed to bind address");
+    let sender_email = config
+        .email_client
+        .sender()
+        .expect("Invalid sender email addr");
+    let email_client = EmailClient::new(
+        config.email_client.base_url,
+        sender_email,
+        config.email_client.authorization_token,
+    );
+    let server = zero2prod::startup::run(listener, connection.clone(), email_client)
+        .expect("Failed to bind address");
 
     let _ = tokio::spawn(server);
 
